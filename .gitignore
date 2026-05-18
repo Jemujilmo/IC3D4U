@@ -8,6 +8,12 @@ __pycache__/
 # Generated CAD output (tracked via .gitkeep, contents excluded)
 output/*
 !output/.gitkeep
+!output/parts/
+output/parts/*
+!output/parts/.gitkeep
+
+# Agent session data
+agent/history.json
 
 # FreeCAD files (generated/working files — not source)
 *.FCStd

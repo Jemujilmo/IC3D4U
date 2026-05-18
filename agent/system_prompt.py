@@ -18,7 +18,7 @@ FREECAD SCRIPT TEMPLATE (always follow this structure):
 import FreeCAD
 import Part
 
-doc = FreeCAD.newDocument("Part")
+doc = FreeCAD.newDocument("AIAgentPart")
 
 # --- geometry here ---
 
