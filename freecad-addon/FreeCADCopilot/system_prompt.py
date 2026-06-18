@@ -1,7 +1,8 @@
 """
-System prompt for the FreeCAD AI Agent.
-Kept intentionally concise to preserve the 4096-token context budget.
-Extend once you increase context length in LM Studio.
+FreeCAD AI Copilot — system_prompt.py
+
+System prompt sent to LM Studio on every request.
+Kept concise to preserve the 4096-token context budget.
 """
 
 SYSTEM_PROMPT = """\

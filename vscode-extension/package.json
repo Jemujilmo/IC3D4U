@@ -1,0 +1,58 @@
+{
+  "name": "ic3d4u-freecad-agent",
+  "displayName": "IC3D4U FreeCAD Agent",
+  "description": "Generate and modify FreeCAD parts using natural language via @freecad in Copilot chat",
+  "version": "0.1.0",
+  "publisher": "ic3d4u",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": ["AI", "Other"],
+  "activationEvents": ["onStartupFinished"],
+  "main": "./out/extension.js",
+  "contributes": {
+    "chatParticipants": [
+      {
+        "id": "ic3d4u.freecad",
+        "name": "freecad",
+        "fullName": "FreeCAD Agent",
+        "description": "Generate and modify FreeCAD parts using natural language. Powered by LM Studio.",
+        "isSticky": true
+      }
+    ],
+    "configuration": {
+      "title": "IC3D4U FreeCAD Agent",
+      "properties": {
+        "ic3d4u.lmStudioUrl": {
+          "type": "string",
+          "default": "http://localhost:1234/v1",
+          "description": "LM Studio local server base URL"
+        },
+        "ic3d4u.modelName": {
+          "type": "string",
+          "default": "qwen3-coder-30b-a3b-instruct",
+          "description": "Model identifier — must match what is loaded in LM Studio"
+        },
+        "ic3d4u.maxTokens": {
+          "type": "number",
+          "default": 3000,
+          "description": "Max tokens for generated FreeCAD scripts"
+        },
+        "ic3d4u.freecadMacroDir": {
+          "type": "string",
+          "default": "",
+          "description": "Override FreeCAD macro directory path (leave blank to auto-detect)"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.90.0",
+    "@types/node": "^18.0.0",
+    "typescript": "^5.0.0"
+  }
+}

@@ -33,7 +33,7 @@ from config import (
     FREECAD_MACRO_DIR,
     MAX_HISTORY_TURNS,
 )
-from system_prompt import SYSTEM_PROMPT
+from system_prompt import DESIGN_INTAKE_PROMPT, SYSTEM_PROMPT
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
 ROOT        = Path(__file__).parent.parent
@@ -99,6 +99,87 @@ def extract_code(text: str) -> str:
         return match.group(1).strip()
     # Model ignored the formatting rule — return raw text as fallback
     return text.strip()
+
+
+def extract_json(text: str) -> dict:
+    """Parse the first JSON object from the LLM response."""
+    stripped = text.strip()
+    fenced = re.search(r"```(?:json)?\s*\n(.*?)```", stripped, re.DOTALL)
+    if fenced:
+        stripped = fenced.group(1).strip()
+
+    try:
+        return json.loads(stripped)
+    except json.JSONDecodeError:
+        start = stripped.find("{")
+        end = stripped.rfind("}")
+        if start == -1 or end == -1 or end <= start:
+            raise
+        return json.loads(stripped[start:end + 1])
+
+
+def get_design_plan(history: list) -> dict:
+    """Run the intake pass and return the structured design plan."""
+    messages = [{"role": "system", "content": DESIGN_INTAKE_PROMPT}]
+    messages += history[-(MAX_HISTORY_TURNS * 2):]
+
+    resp = client.chat.completions.create(
+        model=MODEL_NAME,
+        messages=messages,
+        max_tokens=MAX_TOKENS,
+        temperature=TEMPERATURE,
+    )
+    return extract_json(resp.choices[0].message.content)
+
+
+def can_generate(plan: dict) -> bool:
+    """Return True when the normalized spec may pass into code generation."""
+    return (
+        plan.get("action") == "proceed"
+        and plan.get("readiness") in {"ready", "assumptions_allowed"}
+        and isinstance(plan.get("normalizedSpec"), dict)
+    )
+
+
+def render_questions(plan: dict) -> str:
+    """Format intake questions for the terminal."""
+    questions = plan.get("questions") or []
+    lines = []
+    user_message = plan.get("userMessage")
+    if user_message:
+        lines.append(str(user_message))
+    else:
+        lines.append("I need a little more detail before generating CAD:")
+
+    for index, question in enumerate(questions[:3], start=1):
+        text = question.get("text", "Please provide more detail.")
+        question_id = question.get("id", "unknown")
+        expects = question.get("expects", "string")
+        lines.append(f"{index}. {text} (id: {question_id}, expects: {expects})")
+
+    return "\n".join(lines)
+
+
+def design_plan_history_message(plan: dict) -> str:
+    """Store structured intake state in chat history for the next turn."""
+    return "Design intake result JSON:\n" + json.dumps(
+        plan, indent=2, ensure_ascii=False
+    )
+
+
+def build_codegen_messages(history: deque, plan: dict) -> list:
+    """Build the existing code-gen prompt using normalizedSpec as source of truth."""
+    normalized_spec = plan.get("normalizedSpec", {})
+    spec_text = json.dumps(normalized_spec, indent=2, ensure_ascii=False)
+    spec_prompt = (
+        "Generate a complete FreeCAD Python script from this normalized design spec. "
+        "Use the JSON as the source of truth and follow the system output rules.\n\n"
+        f"NORMALIZED_SPEC_JSON:\n{spec_text}"
+    )
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    messages += list(history)[-(MAX_HISTORY_TURNS * 2):]
+    messages.append({"role": "user", "content": spec_prompt})
+    return messages
 
 
 def save_and_deploy(code: str) -> None:
@@ -186,9 +267,24 @@ def run():
 
         history.append({"role": "user", "content": user_input})
 
-        messages = [{"role": "system", "content": SYSTEM_PROMPT}] + list(history)
+        print("\nPlanning", end="", flush=True)
+        try:
+            plan = get_design_plan(list(history))
+        except Exception as exc:
+            print(f"\n[Error] LM Studio intake request failed: {exc}\n")
+            history.pop()  # remove the failed user message
+            continue
 
-        print("\nGenerating", end="", flush=True)
+        if not can_generate(plan):
+            reply = render_questions(plan)
+            print(" ...\n" + reply + "\n")
+            history.append({"role": "assistant", "content": design_plan_history_message(plan)})
+            save_history(history)
+            continue
+
+        messages = build_codegen_messages(history, plan)
+
+        print(" ... ready.\nGenerating", end="", flush=True)
         try:
             response = client.chat.completions.create(
                 model=MODEL_NAME,
